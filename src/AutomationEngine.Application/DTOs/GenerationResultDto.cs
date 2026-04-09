@@ -7,5 +7,6 @@ public sealed record GenerationResultDto(
     string? TestScriptPath,
     string? BuildJobId,
     string? BuildLogUrl,
-    string? ErrorMessage
+    string? ErrorMessage,
+    string? FunctionalSpecContent = null
 );

@@ -1,9 +1,12 @@
 using System.Text;
 using System.Text.Json;
 using AutomationEngine.Application.DTOs;
+using AutomationEngine.Application.Options;
 using AutomationEngine.Application.UseCases;
+using AutomationEngine.Domain.Interfaces;
 using AutomationEngineService.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace AutomationEngineService.Controllers;
 
@@ -12,6 +15,8 @@ namespace AutomationEngineService.Controllers;
 public sealed class OrchestratorController : ControllerBase
 {
     private readonly IProcessDocumentUseCase _processDocumentUseCase;
+    private readonly IStorageRepository _storage;
+    private readonly ProcessDocumentOptions _options;
     private readonly ILogger<OrchestratorController> _logger;
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
@@ -21,9 +26,13 @@ public sealed class OrchestratorController : ControllerBase
 
     public OrchestratorController(
         IProcessDocumentUseCase processDocumentUseCase,
+        IStorageRepository storage,
+        IOptions<ProcessDocumentOptions> options,
         ILogger<OrchestratorController> logger)
     {
         _processDocumentUseCase = processDocumentUseCase;
+        _storage = storage;
+        _options = options.Value;
         _logger = logger;
     }
 
@@ -89,6 +98,67 @@ public sealed class OrchestratorController : ControllerBase
 
             return StatusCode(StatusCodes.Status500InternalServerError, result);
         }
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Frontend upload endpoint — accepts a design document file,
+    /// stores it in Cloud Storage, runs the AI pipeline, and returns
+    /// the generated functional specification for on-screen display.
+    /// </summary>
+    [HttpPost("upload")]
+    [RequestSizeLimit(50 * 1024 * 1024)] // 50 MB
+    public async Task<IActionResult> UploadAsync(IFormFile file, CancellationToken ct)
+    {
+        if (file is null || file.Length == 0)
+            return BadRequest(new { error = "No file provided or file is empty." });
+
+        var bucket = _options.UploadBucket;
+        if (string.IsNullOrWhiteSpace(bucket))
+        {
+            _logger.LogError("UploadBucket is not configured in GoogleCloud settings.");
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "Upload bucket is not configured." });
+        }
+
+        var objectName = $"uploads/{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}_{file.FileName}";
+
+        _logger.LogInformation(
+            "Upload received. FileName={FileName}, Size={Size}, Destination=gs://{Bucket}/{Object}",
+            file.FileName, file.Length, bucket, objectName);
+
+        // Store file in Cloud Storage
+        using var ms = new MemoryStream();
+        await file.CopyToAsync(ms, ct);
+        var fileBytes = ms.ToArray();
+
+        await _storage.SaveFileBytesAsync(bucket, objectName, fileBytes, file.ContentType, ct);
+        _logger.LogInformation("File uploaded to Cloud Storage. gs://{Bucket}/{Object}", bucket, objectName);
+
+        // Run the processing pipeline
+        var storageEvent = new StorageEventDto
+        {
+            Bucket = bucket,
+            Name = objectName,
+            ContentType = file.ContentType,
+            Size = file.Length.ToString(),
+            TimeCreated = DateTimeOffset.UtcNow
+        };
+
+        var result = await _processDocumentUseCase.ExecuteAsync(storageEvent, ct);
+
+        if (!result.Success)
+        {
+            _logger.LogError(
+                "Pipeline failed for uploaded file. Object={Object}, CorrelationId={CorrelationId}, Error={Error}",
+                objectName, result.CorrelationId, result.ErrorMessage);
+
+            return StatusCode(StatusCodes.Status500InternalServerError, result);
+        }
+
+        _logger.LogInformation(
+            "Upload pipeline completed. CorrelationId={CorrelationId}", result.CorrelationId);
 
         return Ok(result);
     }

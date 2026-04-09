@@ -29,6 +29,10 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
+// Serve wwwroot/ static files (frontend UI)
+app.UseDefaultFiles();   // index.html as default document
+app.UseStaticFiles();
+
 app.MapControllers();
 app.Run();
 

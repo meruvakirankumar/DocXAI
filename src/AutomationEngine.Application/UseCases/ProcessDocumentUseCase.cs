@@ -105,7 +105,8 @@ public sealed class ProcessDocumentUseCase : IProcessDocumentUseCase
                 TestScriptPath: testScript.StoragePath,
                 BuildJobId: buildJob.JobId,
                 BuildLogUrl: buildJob.LogUrl,
-                ErrorMessage: null);
+                ErrorMessage: null,
+                FunctionalSpecContent: functionalSpec.Content);
         }
         catch (Exception ex)
         {
