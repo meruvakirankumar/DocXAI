@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>AutomationEngine.Infrastructure</RootNamespace>
+    <AssemblyName>AutomationEngine.Infrastructure</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AutomationEngine.Domain\AutomationEngine.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Google Cloud Storage -->
+    <PackageReference Include="Google.Cloud.Storage.V1" Version="4.14.0" />
+    <!-- Vertex AI – Gemini GenerateContent via PredictionServiceClient -->
+    <PackageReference Include="Google.Cloud.AIPlatform.V1" Version="3.70.0" />
+    <!-- Cloud Build v1 REST client -->
+    <PackageReference Include="Google.Apis.CloudBuild.v1" Version="1.69.0.3786" />
+    <!-- Secret Manager -->
+    <PackageReference Include="Google.Cloud.SecretManager.V1" Version="2.7.0" />
+    <!-- .docx generation (Open XML SDK) -->
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
+    <!-- DI / Options / Logging abstractions -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.0" />
+  </ItemGroup>
+
+</Project>
