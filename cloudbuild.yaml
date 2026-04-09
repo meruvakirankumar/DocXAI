@@ -1,0 +1,65 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# cloudbuild.yaml  –  Build, push, and deploy AutomationEngineService to Cloud Run
+#
+# Required substitution variables (set in the Cloud Build trigger or via --substitutions):
+#   _REGION               GCP region, e.g. "us-central1"
+#   _ARTIFACT_REGISTRY    Artifact Registry repo path, e.g.
+#                         "us-central1-docker.pkg.dev/MY_PROJECT/automation-engine"
+#   _SERVICE_NAME         Cloud Run service name, e.g. "automation-engine"
+#   _SERVICE_ACCOUNT      Cloud Run service account email
+# ──────────────────────────────────────────────────────────────────────────────
+
+steps:
+  # 1 ── Build the Docker image ─────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/docker"
+    id: docker-build
+    args:
+      - build
+      - -t
+      - "$_ARTIFACT_REGISTRY/$_SERVICE_NAME:$COMMIT_SHA"
+      - -t
+      - "$_ARTIFACT_REGISTRY/$_SERVICE_NAME:latest"
+      - .
+
+  # 2 ── Push image to Artifact Registry ────────────────────────────────────
+  - name: "gcr.io/cloud-builders/docker"
+    id: docker-push
+    args:
+      - push
+      - --all-tags
+      - "$_ARTIFACT_REGISTRY/$_SERVICE_NAME"
+    waitFor: [docker-build]
+
+  # 3 ── Deploy to Cloud Run ─────────────────────────────────────────────────
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+    id: cloud-run-deploy
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - "$_SERVICE_NAME"
+      - --image=$_ARTIFACT_REGISTRY/$_SERVICE_NAME:$COMMIT_SHA
+      - --region=$_REGION
+      - --platform=managed
+      - --no-allow-unauthenticated
+      - --service-account=$_SERVICE_ACCOUNT
+      - --set-env-vars=ASPNETCORE_ENVIRONMENT=Production
+      - --memory=512Mi
+      - --cpu=1
+      - --timeout=3600
+      - --concurrency=80
+    waitFor: [docker-push]
+
+images:
+  - "$_ARTIFACT_REGISTRY/$_SERVICE_NAME:$COMMIT_SHA"
+  - "$_ARTIFACT_REGISTRY/$_SERVICE_NAME:latest"
+
+substitutions:
+  _REGION: us-central1
+  _ARTIFACT_REGISTRY: us-central1-docker.pkg.dev/in-300000000123933-mfg/automation-engine
+  _SERVICE_NAME: automation-engine
+  _SERVICE_ACCOUNT: mfg-hackathon@in-300000000123933-mfg.iam.gserviceaccount.com
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8

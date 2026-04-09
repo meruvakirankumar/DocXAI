@@ -1,0 +1,6 @@
+@AutomationEngineService_HostAddress = http://localhost:5129
+
+GET {{AutomationEngineService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

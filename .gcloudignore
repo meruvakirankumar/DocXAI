@@ -1,0 +1,15 @@
+# .gcloudignore — files excluded when deploying to Cloud Run / App Engine
+.git/
+.gitignore
+*.md
+bin/
+obj/
+*.user
+*.suo
+.vs/
+Properties/launchSettings.json
+appsettings.Development.json
+
+# Service account key files — never deploy these; Cloud Run uses the attached SA
+*-f11b29410c75.json
+*.key.json
