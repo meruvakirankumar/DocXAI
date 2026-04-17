@@ -53,13 +53,24 @@ public sealed class GcpCloudStorageService : IStorageRepository
             content.Length, bucketName, objectPath, contentType);
 
         using var ms = new MemoryStream(content);
-        await _storageClient.UploadObjectAsync(
+        var uploaded = await _storageClient.UploadObjectAsync(
             bucketName,
             objectPath,
             contentType,
             ms,
             cancellationToken: ct);
 
-        _logger.LogInformation("Upload complete: gs://{Bucket}/{Object}", bucketName, objectPath);
+        _logger.LogInformation(
+            "Upload complete: gs://{Bucket}/{Object} — Generation={Generation}, Size={Size}, MD5={Md5}",
+            bucketName, objectPath, uploaded.Generation, uploaded.Size, uploaded.Md5Hash);
+
+        // Post-upload verification: fetch the object metadata to confirm it is
+        // accessible in the bucket and log the confirmed generation (version).
+        var verified = await _storageClient.GetObjectAsync(bucketName, objectPath, cancellationToken: ct);
+
+        _logger.LogInformation(
+            "Upload verified in bucket: gs://{Bucket}/{Object} — ConfirmedGeneration={Generation}, ConfirmedSize={Size}, Versioned={IsVersioned}",
+            bucketName, objectPath, verified.Generation, verified.Size,
+            verified.Generation is not null ? "yes" : "unknown");
     }
 }

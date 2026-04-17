@@ -8,5 +8,6 @@ public sealed record GenerationResultDto(
     string? BuildJobId,
     string? BuildLogUrl,
     string? ErrorMessage,
-    string? FunctionalSpecContent = null
+    string? FunctionalSpecContent = null,
+    string? BuildWarning = null
 );

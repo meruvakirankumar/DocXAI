@@ -4,9 +4,13 @@ using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ── Cloud Run: listen on PORT env var (default 8080) ─────────────────────────
-var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
-builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+// ── Cloud Run: bind only when PORT is explicitly provided ────────────────────
+// Local runs should use launchSettings / ASPNETCORE_URLS to avoid fixed-port conflicts.
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+}
 
 // ── Structured JSON logging for Google Cloud Logging ─────────────────────────
 builder.Logging.ClearProviders();
