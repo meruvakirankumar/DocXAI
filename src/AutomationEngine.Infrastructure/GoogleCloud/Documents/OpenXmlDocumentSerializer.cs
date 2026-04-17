@@ -1,12 +1,35 @@
+using System.Text;
 using AutomationEngine.Domain.Interfaces;
-using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Wordprocessing;
 
 namespace AutomationEngine.Infrastructure.GoogleCloud.Documents;
 
 public sealed class OpenXmlDocumentSerializer : IDocumentSerializer
 {
+    /// <summary>
+    /// Extracts all paragraph text from a .docx byte array and returns it as plain text.
+    /// </summary>
+    public string ExtractTextFromDocx(byte[] docxBytes)
+    {
+        using var ms = new MemoryStream(docxBytes);
+        using var doc = WordprocessingDocument.Open(ms, isEditable: false);
+
+        var body = doc.MainDocumentPart?.Document?.Body;
+        if (body is null)
+            return string.Empty;
+
+        var sb = new StringBuilder();
+        foreach (var para in body.Descendants<Paragraph>())
+        {
+            var line = para.InnerText;
+            sb.AppendLine(line);
+        }
+
+        return sb.ToString();
+    }
+
     /// <summary>
     /// Converts Markdown-formatted plain text into a .docx byte array.
     /// Headings (# / ## / ###) are mapped to Word heading styles.

@@ -43,7 +43,27 @@ public sealed class ProcessDocumentUseCase : IProcessDocumentUseCase
         try
         {
             // ── Step 1: Read design document from Cloud Storage ──────────────
-            var rawContent = await _storage.ReadFileContentAsync(storageEvent.Bucket, storageEvent.Name, ct);
+            // .docx files are binary (Office Open XML ZIP). Read raw bytes and
+            // extract the plain text before passing to Gemini.
+            string rawContent;
+            var objectNameLower = storageEvent.Name.ToLowerInvariant();
+            var contentTypeLower = (storageEvent.ContentType ?? string.Empty).ToLowerInvariant();
+            bool isDocx = objectNameLower.EndsWith(".docx") ||
+                          contentTypeLower.Contains("wordprocessingml") ||
+                          contentTypeLower.Contains("vnd.openxmlformats-officedocument");
+
+            if (isDocx)
+            {
+                _logger.LogInformation("Detected .docx file — extracting plain text. Object={Object}", storageEvent.Name);
+                var inputDocxBytes = await _storage.ReadFileBytesAsync(storageEvent.Bucket, storageEvent.Name, ct);
+                rawContent = _documentSerializer.ExtractTextFromDocx(inputDocxBytes);
+                _logger.LogInformation("Extracted {Chars} chars of plain text from .docx", rawContent.Length);
+            }
+            else
+            {
+                rawContent = await _storage.ReadFileContentAsync(storageEvent.Bucket, storageEvent.Name, ct);
+            }
+
             var designDoc = DesignDocument.Create(storageEvent.Bucket, storageEvent.Name, rawContent);
             context.SetDesignDocument(designDoc);
 
