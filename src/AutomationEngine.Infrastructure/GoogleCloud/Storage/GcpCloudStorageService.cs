@@ -31,6 +31,18 @@ public sealed class GcpCloudStorageService : IStorageRepository
         return content;
     }
 
+    public async Task<byte[]> ReadFileBytesAsync(string bucketName, string objectName, CancellationToken ct = default)
+    {
+        _logger.LogInformation("Downloading bytes gs://{Bucket}/{Object}", bucketName, objectName);
+
+        using var ms = new MemoryStream();
+        await _storageClient.DownloadObjectAsync(bucketName, objectName, ms, cancellationToken: ct);
+        var bytes = ms.ToArray();
+
+        _logger.LogInformation("Downloaded {Bytes} bytes from gs://{Bucket}/{Object}", bytes.Length, bucketName, objectName);
+        return bytes;
+    }
+
     public async Task SaveFileAsync(
         string bucketName,
         string objectPath,
