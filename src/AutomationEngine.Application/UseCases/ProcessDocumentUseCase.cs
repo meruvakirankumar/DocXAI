@@ -4,6 +4,7 @@ using AutomationEngine.Domain.Entities;
 using AutomationEngine.Domain.Interfaces;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Text.RegularExpressions;
 
 namespace AutomationEngine.Application.UseCases;
 
@@ -73,12 +74,48 @@ public sealed class ProcessDocumentUseCase : IProcessDocumentUseCase
             // ── Step 2: Vertex AI (Gemini) → Generate Functional Specification ─
             _logger.LogInformation("Invoking Vertex AI (Gemini) to generate Functional Specification...");
             var specContent = await _aiService.GenerateFunctionalSpecAsync(designDoc.Content, ct);
-            var functionalSpec = FunctionalSpec.Create(specContent, designDoc, _options.OutputFolder);
+
+            // ── Resolve versioned output path for the functional spec ─────────
+            // Output folder: {solutionName}/functional/
+            // Base name:     functional_{uploadedFileStem}.docx
+            // e.g. "MyProject/design.docx" → "MyProject/functional/functional_design.docx"
+            // Versioning:    "MyProject/functional/functional_design-001.docx", -002, …
+            var solutionName  = ExtractSolutionName(storageEvent.Name);
+            var baseFileName  = FunctionalSpec.DeriveBaseFileName(storageEvent.Name);
+            var outputFolder  = $"{solutionName}/functional";
+            var basePath      = $"{outputFolder}/{baseFileName}";
+            var outputPrefix  = $"{outputFolder}/";
+
+            var existingOutputs = await _storage.ListObjectNamesAsync(storageEvent.Bucket, outputPrefix, ct);
+            var existingSet     = new HashSet<string>(existingOutputs, StringComparer.OrdinalIgnoreCase);
+
+            string resolvedOutputPath;
+            if (!existingSet.Contains(basePath))
+            {
+                resolvedOutputPath = basePath;
+            }
+            else
+            {
+                var stem = Path.GetFileNameWithoutExtension(baseFileName); // e.g. "functional_design"
+                int version = 1;
+                string candidate;
+                do
+                {
+                    candidate = $"{outputFolder}/{stem}-{version:D3}.docx";
+                    version++;
+                }
+                while (existingSet.Contains(candidate) && version <= 999);
+                resolvedOutputPath = candidate;
+            }
+
+            _logger.LogInformation("Resolved output path for functional spec. Path={Path}", resolvedOutputPath);
+
+            var functionalSpec = FunctionalSpec.Create(specContent, designDoc, resolvedOutputPath);
             context.SetFunctionalSpec(functionalSpec);
 
             _logger.LogInformation("Functional spec generated. OutputPath={Path}", functionalSpec.OutputPath);
 
-            // ── Step 3: Save functional spec as .docx to Cloud Storage ────────
+            // ── Step 3: Save functional spec as .docx to Cloud Storage ──────────
             var docxBytes = await Task.Run(() => _documentSerializer.SerializeToDocx(functionalSpec.Content), ct);
             await _storage.SaveFileBytesAsync(
                 functionalSpec.BucketName,
@@ -162,5 +199,58 @@ public sealed class ProcessDocumentUseCase : IProcessDocumentUseCase
                 BuildLogUrl: null,
                 ErrorMessage: ex.Message);
         }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Extracts the solution name (first path segment) from the GCS object name.
+    /// "MyProject/design.docx" → "MyProject"
+    /// "design.docx"           → "documents"  (fallback)
+    /// </summary>
+    private static string ExtractSolutionName(string objectName)
+    {
+        var slash = objectName.IndexOf('/');
+        return slash > 0 ? objectName[..slash] : "documents";
+    }
+
+    /// <summary>
+    /// Extracts section headings from the design document plain text.
+    /// Detects Markdown headings (# ## ###) and common title-case/ALL-CAPS lines.
+    /// </summary>
+    private static IReadOnlyList<string> ExtractSectionHeadings(string content)
+    {
+        var headings = new List<string>();
+        var seen     = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var rawLine in content.Split('\n'))
+        {
+            var line = rawLine.Trim();
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            string? heading = null;
+
+            // Markdown headings: # Title / ## Title / ### Title
+            var mdMatch = Regex.Match(line, @"^#{1,3}\s+(.+)$");
+            if (mdMatch.Success)
+            {
+                heading = mdMatch.Groups[1].Value.Trim().TrimEnd('#').Trim();
+            }
+            // Short ALL-CAPS or Title-Case lines (3–80 chars, no sentence punctuation)
+            else if (line.Length is >= 3 and <= 80
+                     && !line.EndsWith('.') && !line.EndsWith(',')
+                     && (line == line.ToUpper() || Regex.IsMatch(line, @"^[A-Z][a-zA-Z\s\-&/()]+$")))
+            {
+                heading = line;
+            }
+
+            if (heading != null && seen.Add(heading))
+                headings.Add(heading);
+
+            // Cap at 20 sections — anything beyond that is noise
+            if (headings.Count >= 20) break;
+        }
+
+        return headings;
     }
 }

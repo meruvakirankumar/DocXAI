@@ -22,7 +22,9 @@
     const resultMeta      = document.getElementById('result-meta');
     const documentViewer  = document.getElementById('document-viewer');
     const copyBtn         = document.getElementById('copy-btn');
+    const saveBtn         = document.getElementById('save-btn');
     const newUploadBtn    = document.getElementById('new-upload-btn');
+    const solutionNameInput = document.getElementById('solution-name');
 
     let selectedFile = null;
     let rawSpecContent = '';
@@ -106,12 +108,20 @@
     uploadBtn.addEventListener('click', async () => {
         if (!selectedFile) return;
 
+        const solutionName = solutionNameInput.value.trim();
+        if (!solutionName) {
+            showError('Please enter a Solution Name before uploading.');
+            solutionNameInput.focus();
+            return;
+        }
+
         hideError();
         setUploading(true);
         setProgress(10, 'Uploading file to Cloud Storage…');
 
         const formData = new FormData();
         formData.append('file', selectedFile);
+        formData.append('solutionName', solutionName);
 
         try {
             // Use XMLHttpRequest for upload progress tracking
@@ -134,9 +144,8 @@
                         { pct: 55, text: 'Reading design document…', delay: 2000 },
                         { pct: 65, text: 'Vertex AI (Gemini) is analysing the document…', delay: 5000 },
                         { pct: 75, text: 'Generating functional specification…', delay: 8000 },
-                        { pct: 85, text: 'Creating .docx output…', delay: 12000 },
-                        { pct: 90, text: 'Generating Playwright test scripts…', delay: 16000 },
-                        { pct: 92, text: 'Triggering Cloud Build…', delay: 20000 },
+                        { pct: 85, text: 'Generating Playwright test scripts…', delay: 12000 },
+                        { pct: 90, text: 'Triggering Cloud Build…', delay: 16000 },
                     ];
                     steps.forEach(s => {
                         setTimeout(() => {
@@ -225,6 +234,53 @@
         div.textContent = str;
         return div.innerHTML;
     }
+
+    // ── Save as Word (.docx) ──────────────────────────────────────────────
+    saveBtn.addEventListener('click', async () => {
+        if (!rawSpecContent) return;
+
+        const originalHtml = saveBtn.innerHTML;
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving…';
+
+        try {
+            const solutionName = solutionNameInput.value.trim();
+            const fileName = solutionName
+                ? `${solutionName}-functional-specification`
+                : 'functional-specification';
+
+            const response = await fetch('/api/orchestrator/save-docx', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: rawSpecContent, fileName })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `Server error ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName.endsWith('.docx') ? fileName : fileName + '.docx';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            saveBtn.innerHTML = '✓ Saved';
+            setTimeout(() => {
+                saveBtn.innerHTML = originalHtml;
+                saveBtn.disabled = false;
+            }, 2500);
+        } catch (err) {
+            saveBtn.innerHTML = originalHtml;
+            saveBtn.disabled = false;
+            showError('Could not save document: ' + (err.message || 'Unknown error'));
+        }
+    });
 
     // ── Copy to clipboard ───────────────────────────────────────────────────
     copyBtn.addEventListener('click', async () => {

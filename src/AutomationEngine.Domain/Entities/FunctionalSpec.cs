@@ -9,17 +9,32 @@ public sealed class FunctionalSpec
     public string OutputPath { get; init; } = string.Empty;
     public DateTimeOffset GeneratedAt { get; init; }
 
-    public static FunctionalSpec Create(string content, DesignDocument source, string outputFolder = "output")
+    /// <summary>
+    /// Creates a FunctionalSpec with a fully resolved (possibly versioned) output path.
+    /// The caller is responsible for resolving versioning before calling this method.
+    /// </summary>
+    public static FunctionalSpec Create(string content, DesignDocument source, string resolvedOutputPath)
     {
-        var outputFileName = $"functional_spec_{source.Version}.docx";
         return new FunctionalSpec
         {
             Content = content,
             SourceDocumentName = source.ObjectName,
-            OutputFileName = outputFileName,
+            OutputFileName = Path.GetFileName(resolvedOutputPath),
             BucketName = source.BucketName,
-            OutputPath = $"{outputFolder}/{outputFileName}",
+            OutputPath = resolvedOutputPath,
             GeneratedAt = DateTimeOffset.UtcNow
         };
+    }
+
+    /// <summary>
+    /// Derives the base output filename from the uploaded object name.
+    /// e.g. "MyProject/design.docx" → "functional_design.docx"
+    ///      "MyProject/spec-001.md"  → "functional_spec-001.docx"
+    /// </summary>
+    public static string DeriveBaseFileName(string objectName)
+    {
+        var fileName = Path.GetFileName(objectName);          // strip folder prefix
+        var stem     = Path.GetFileNameWithoutExtension(fileName);
+        return $"functional_{stem}.docx";
     }
 }
