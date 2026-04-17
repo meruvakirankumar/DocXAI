@@ -43,6 +43,17 @@ public sealed class GcpCloudStorageService : IStorageRepository
         return bytes;
     }
 
+    public async Task<IReadOnlyList<string>> ListObjectNamesAsync(string bucketName, string prefix, CancellationToken ct = default)
+    {
+        var names = new List<string>();
+        var listOptions = new Google.Cloud.Storage.V1.ListObjectsOptions { Delimiter = null };
+        await foreach (var obj in _storageClient.ListObjectsAsync(bucketName, prefix, listOptions).WithCancellation(ct))
+        {
+            names.Add(obj.Name);
+        }
+        return names;
+    }
+
     public async Task SaveFileAsync(
         string bucketName,
         string objectPath,

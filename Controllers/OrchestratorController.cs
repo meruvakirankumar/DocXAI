@@ -7,6 +7,7 @@ using AutomationEngine.Domain.Interfaces;
 using AutomationEngineService.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using System.ComponentModel.DataAnnotations;
 
 namespace AutomationEngineService.Controllers;
 
@@ -16,6 +17,7 @@ public sealed class OrchestratorController : ControllerBase
 {
     private readonly IProcessDocumentUseCase _processDocumentUseCase;
     private readonly IStorageRepository _storage;
+    private readonly IDocumentSerializer _documentSerializer;
     private readonly ProcessDocumentOptions _options;
     private readonly ILogger<OrchestratorController> _logger;
 
@@ -27,11 +29,13 @@ public sealed class OrchestratorController : ControllerBase
     public OrchestratorController(
         IProcessDocumentUseCase processDocumentUseCase,
         IStorageRepository storage,
+        IDocumentSerializer documentSerializer,
         IOptions<ProcessDocumentOptions> options,
         ILogger<OrchestratorController> logger)
     {
         _processDocumentUseCase = processDocumentUseCase;
         _storage = storage;
+        _documentSerializer = documentSerializer;
         _options = options.Value;
         _logger = logger;
     }
@@ -103,16 +107,27 @@ public sealed class OrchestratorController : ControllerBase
     }
 
     /// <summary>
-    /// Frontend upload endpoint — accepts a design document file,
-    /// stores it in Cloud Storage, runs the AI pipeline, and returns
-    /// the generated functional specification for on-screen display.
+    /// Frontend upload endpoint — accepts a design document file and a solution name,
+    /// stores it under {solutionName}/{filename} in Cloud Storage (with automatic
+    /// version suffixes -001, -002 … when a file with the same name already exists),
+    /// runs the AI pipeline, and returns the generated functional specification.
     /// </summary>
     [HttpPost("upload")]
     [RequestSizeLimit(50 * 1024 * 1024)] // 50 MB
-    public async Task<IActionResult> UploadAsync(IFormFile file, CancellationToken ct)
+    public async Task<IActionResult> UploadAsync(IFormFile file, [FromForm] string solutionName, CancellationToken ct)
     {
         if (file is null || file.Length == 0)
             return BadRequest(new { error = "No file provided or file is empty." });
+
+        if (string.IsNullOrWhiteSpace(solutionName))
+            return BadRequest(new { error = "solutionName is required. Provide the solution name before uploading." });
+
+        // Sanitise solution name: allow alphanumeric, hyphens, underscores only
+        var safeSolution = System.Text.RegularExpressions.Regex.Replace(
+            solutionName.Trim(), @"[^a-zA-Z0-9\-_]", "-").Trim('-');
+
+        if (string.IsNullOrWhiteSpace(safeSolution))
+            return BadRequest(new { error = "solutionName contains no valid characters. Use letters, numbers, hyphens or underscores." });
 
         var bucket = _options.UploadBucket;
         if (string.IsNullOrWhiteSpace(bucket))
@@ -122,11 +137,42 @@ public sealed class OrchestratorController : ControllerBase
                 new { error = "Upload bucket is not configured." });
         }
 
-        var objectName = $"uploads/{DateTimeOffset.UtcNow:yyyyMMddHHmmssfff}_{file.FileName}";
+        // ── Resolve versioned object path ─────────────────────────────────
+        // Base path: {solutionName}/{originalFileName}
+        // If already exists → {solutionName}/{stem}-001.{ext}, -002, …
+        var originalFileName = Path.GetFileName(file.FileName);
+        var stem = Path.GetFileNameWithoutExtension(originalFileName);
+        var ext  = Path.GetExtension(originalFileName);   // includes the dot
+
+        var basePath    = $"{safeSolution}/{originalFileName}";
+        var prefix      = $"{safeSolution}/";
+
+        var existingNames = await _storage.ListObjectNamesAsync(bucket, prefix, ct);
+        var existingSet   = new HashSet<string>(existingNames, StringComparer.OrdinalIgnoreCase);
+
+        string objectName;
+        if (!existingSet.Contains(basePath))
+        {
+            objectName = basePath;
+        }
+        else
+        {
+            // Find next free version slot: -001, -002, …
+            int version = 1;
+            string candidate;
+            do
+            {
+                candidate = $"{safeSolution}/{stem}-{version:D3}{ext}";
+                version++;
+            }
+            while (existingSet.Contains(candidate) && version <= 999);
+
+            objectName = candidate;
+        }
 
         _logger.LogInformation(
-            "Upload received. FileName={FileName}, Size={Size}, Destination=gs://{Bucket}/{Object}",
-            file.FileName, file.Length, bucket, objectName);
+            "Upload received. Solution={Solution}, FileName={FileName}, Size={Size}, Destination=gs://{Bucket}/{Object}",
+            safeSolution, file.FileName, file.Length, bucket, objectName);
 
         // Store file in Cloud Storage
         using var ms = new MemoryStream();
@@ -164,6 +210,31 @@ public sealed class OrchestratorController : ControllerBase
     }
 
     /// <summary>
+    /// Converts a functional specification (Markdown text) to a .docx file and
+    /// streams it back as a file download. Called by the frontend Save button.
+    /// </summary>
+    [HttpPost("save-docx")]
+    [RequestSizeLimit(5 * 1024 * 1024)] // 5 MB — spec content only
+    public IActionResult SaveDocxAsync([FromBody] SaveDocxRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request?.Content))
+            return BadRequest(new { error = "Content is required." });
+
+        var docxBytes = _documentSerializer.SerializeToDocx(request.Content);
+
+        var fileName = string.IsNullOrWhiteSpace(request.FileName)
+            ? "functional-specification.docx"
+            : request.FileName.EndsWith(".docx", StringComparison.OrdinalIgnoreCase)
+                ? request.FileName
+                : request.FileName + ".docx";
+
+        return File(
+            docxBytes,
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            fileName);
+    }
+
+    /// <summary>
     /// Health check endpoint consumed by Cloud Run liveness/readiness probes.
     /// </summary>
     [HttpGet("health")]
@@ -175,3 +246,9 @@ public sealed class OrchestratorController : ControllerBase
             timestamp = DateTimeOffset.UtcNow
         });
 }
+
+/// <summary>Request body for the save-docx endpoint.</summary>
+public sealed record SaveDocxRequest(
+    [Required] string Content,
+    string? FileName = null
+);

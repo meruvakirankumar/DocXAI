@@ -91,7 +91,7 @@ public sealed class GcpVertexAIService : IAIGenerationService
         return $"""
             You are a technical writer reviewing a design document to produce a Functional Specification.
 
-            The document describes a software solution — it may cover areas such as general information, project details, client details, form fields, business rules, and other relevant sections depending on what the author has included.
+            The document describes a software solution -- it may cover areas such as general information, project details, client details, form fields, business rules, and other relevant sections depending on what the author has included.
             Your job is to understand the intent of the document and translate it into a structured specification that captures what each part of the screen or form is expected to do.
 
             Go through the document naturally, section by section, and for each one produce a Markdown heading followed by a table in this format:
@@ -130,7 +130,7 @@ public sealed class GcpVertexAIService : IAIGenerationService
         {functionalSpecContent}
         ---
 
-        Output ONLY the TypeScript code ï¿½ a single .spec.ts file executable via `npx playwright test`.
+        Output ONLY the TypeScript code � a single .spec.ts file executable via `npx playwright test`.
         No explanatory prose; pure code only.
         """;
 }
