@@ -83,15 +83,31 @@ public sealed class ProcessDocumentUseCase : IProcessDocumentUseCase
 
             // ── Step 6: Trigger Cloud Build to execute the test script ────────
             _logger.LogInformation("Triggering Cloud Build job for test execution...");
-            var buildJob = await _buildService.TriggerTestExecutionAsync(
-                _options.ProjectId,
-                testScript.StoragePath,
-                ct);
-            context.SetBuildJob(buildJob);
 
-            _logger.LogInformation(
-                "Cloud Build triggered. JobId={JobId}, Status={Status}, LogUrl={LogUrl}",
-                buildJob.JobId, buildJob.Status, buildJob.LogUrl);
+            BuildJob? buildJob = null;
+            string? buildWarning = null;
+
+            try
+            {
+                buildJob = await _buildService.TriggerTestExecutionAsync(
+                    _options.ProjectId,
+                    testScript.StoragePath,
+                    ct);
+                context.SetBuildJob(buildJob);
+
+                _logger.LogInformation(
+                    "Cloud Build triggered. JobId={JobId}, Status={Status}, LogUrl={LogUrl}",
+                    buildJob.JobId, buildJob.Status, buildJob.LogUrl);
+            }
+            catch (Exception buildEx)
+            {
+                // Cloud Build failure is non-fatal — the functional spec was already generated.
+                // Surface a warning so the caller knows Cloud Build was skipped.
+                buildWarning = $"Cloud Build step skipped: {buildEx.Message}";
+                _logger.LogWarning(buildEx,
+                    "Cloud Build trigger failed (non-fatal). Pipeline will still return the functional spec. Reason={Reason}",
+                    buildEx.Message);
+            }
 
             context.MarkCompleted();
 
@@ -103,10 +119,11 @@ public sealed class ProcessDocumentUseCase : IProcessDocumentUseCase
                 CorrelationId: context.CorrelationId,
                 FunctionalSpecPath: functionalSpec.OutputPath,
                 TestScriptPath: testScript.StoragePath,
-                BuildJobId: buildJob.JobId,
-                BuildLogUrl: buildJob.LogUrl,
+                BuildJobId: buildJob?.JobId,
+                BuildLogUrl: buildJob?.LogUrl,
                 ErrorMessage: null,
-                FunctionalSpecContent: functionalSpec.Content);
+                FunctionalSpecContent: functionalSpec.Content,
+                BuildWarning: buildWarning);
         }
         catch (Exception ex)
         {

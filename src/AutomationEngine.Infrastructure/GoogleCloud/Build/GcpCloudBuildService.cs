@@ -7,6 +7,7 @@ using Google.Apis.CloudBuild.v1.Data;
 using Google.Apis.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Net;
 
 namespace AutomationEngine.Infrastructure.GoogleCloud.Build;
 
@@ -45,24 +46,36 @@ public sealed class GcpCloudBuildService : IBuildService
         var build = CreatePlaywrightBuild(testScriptBucketPath);
 
         // projects.builds.create returns a long-running Operation
-        var operation = await cloudBuildService.Projects.Builds
-            .Create(build, projectId)
-            .ExecuteAsync(ct);
-
-        var buildId = ExtractBuildId(operation.Name);
-        var logUrl = $"https://console.cloud.google.com/cloud-build/builds/{buildId}?project={projectId}";
-
-        _logger.LogInformation(
-            "Cloud Build job queued. BuildId={BuildId}, LogUrl={LogUrl}", buildId, logUrl);
-
-        return new BuildJob
+        try
         {
-            JobId = buildId,
-            ProjectId = projectId,
-            Status = "QUEUED",
-            LogUrl = logUrl,
-            TriggeredAt = DateTimeOffset.UtcNow
-        };
+            var operation = await cloudBuildService.Projects.Builds
+                .Create(build, projectId)
+                .ExecuteAsync(ct);
+
+            var buildId = ExtractBuildId(operation.Name);
+            var logUrl = $"https://console.cloud.google.com/cloud-build/builds/{buildId}?project={projectId}";
+
+            _logger.LogInformation(
+                "Cloud Build job queued. BuildId={BuildId}, LogUrl={LogUrl}", buildId, logUrl);
+
+            return new BuildJob
+            {
+                JobId = buildId,
+                ProjectId = projectId,
+                Status = "QUEUED",
+                LogUrl = logUrl,
+                TriggeredAt = DateTimeOffset.UtcNow
+            };
+        }
+        catch (Google.GoogleApiException apiEx)
+            when (apiEx.HttpStatusCode == HttpStatusCode.Forbidden ||
+                  apiEx.HttpStatusCode == HttpStatusCode.ServiceUnavailable)
+        {
+            var enableUrl = $"https://console.developers.google.com/apis/api/cloudbuild.googleapis.com/overview?project={projectId}";
+            throw new InvalidOperationException(
+                $"Cloud Build API is disabled or access is forbidden for project '{projectId}'. " +
+                $"Enable it at: {enableUrl}  —  then retry. (Original: {apiEx.Message})", apiEx);
+        }
     }
 
     // ── Build definition ─────────────────────────────────────────────────────

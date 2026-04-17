@@ -27,8 +27,15 @@ function Write-OK([string]$msg)   { Write-Host "    OK: $msg" -ForegroundColor G
 # ── Validate prerequisites ────────────────────────────────────────────────────
 Write-Step "Checking prerequisites"
 
-if (-not (Get-Command gcloud -ErrorAction SilentlyContinue)) {
-    throw "gcloud CLI not found. Install it from https://cloud.google.com/sdk/docs/install"
+$gcloud = Get-Command gcloud -ErrorAction SilentlyContinue
+if (-not $gcloud) {
+    $gcloudFull = "$env:LOCALAPPDATA\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd"
+    if (Test-Path $gcloudFull) {
+        Set-Alias -Name gcloud -Value $gcloudFull -Scope Script
+        $gcloud = $gcloudFull
+    } else {
+        throw "gcloud CLI not found. Install it from https://cloud.google.com/sdk/docs/install"
+    }
 }
 if (-not (Test-Path $KeyFile)) {
     throw "Key file '$KeyFile' not found. Run this script from the repo root."
@@ -57,8 +64,12 @@ function Set-GcpSecret {
         [string]$Description
     )
 
-    $exists = gcloud secrets describe $SecretId --project=$ProjectId 2>$null
-    if ($LASTEXITCODE -ne 0) {
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "SilentlyContinue"
+    $null = gcloud secrets describe $SecretId --project=$ProjectId 2>&1
+    $describeExitCode = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
+    if ($describeExitCode -ne 0) {
         Write-Host "    Creating secret: $SecretId"
         gcloud secrets create $SecretId `
             --project=$ProjectId `

@@ -195,6 +195,17 @@
         }
         resultMeta.innerHTML = metaHtml;
 
+        // Surface Cloud Build warning if present
+        if (result.buildWarning) {
+            const warn = document.createElement('div');
+            warn.className = 'build-warning';
+            warn.innerHTML =
+                `⚠️ <strong>Cloud Build skipped:</strong> ${escapeHtml(result.buildWarning)} ` +
+                `<a href="https://console.developers.google.com/apis/api/cloudbuild.googleapis.com/overview" ` +
+                `target="_blank" rel="noopener">Enable Cloud Build API →</a>`;
+            resultMeta.after(warn);
+        }
+
         // Render functional spec content (markdown → HTML)
         rawSpecContent = result.functionalSpecContent || '';
         if (rawSpecContent) {
