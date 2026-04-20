@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocXAI — Solution Write-Up</title>
+    <style>
+        :root { --pri:#6366f1; --pri-dk:#4f46e5; --acc:#06b6d4; --bg:#fff; --bg2:#f8fafc; --txt:#1e293b; --txt2:#64748b; --bdr:#e2e8f0; --r:10px; }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Segoe UI',system-ui,sans-serif; color:var(--txt); background:var(--bg); line-height:1.5; max-width:900px; margin:0 auto; padding:1.5rem 2rem 2rem; font-size:.88rem; }
+        .doc-header { text-align:center; margin-bottom:1.2rem; padding-bottom:.8rem; border-bottom:2px solid var(--bdr); }
+        .doc-header h1 { font-size:1.8rem; font-weight:700; background:linear-gradient(135deg,var(--pri),var(--acc)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; margin-bottom:.2rem; }
+        .doc-header .subtitle { font-size:.95rem; color:var(--txt2); }
+        .doc-header .meta { margin-top:.3rem; font-size:.78rem; color:var(--txt2); }
+        section { margin-bottom:1rem; }
+        h2 { font-size:1.05rem; font-weight:700; color:var(--pri-dk); margin-bottom:.35rem; padding-bottom:.15rem; border-bottom:2px solid var(--pri); display:inline-block; }
+        h3 { font-size:.9rem; font-weight:600; margin:.5rem 0 .25rem; }
+        p { margin-bottom:.4rem; }
+        ul,ol { margin:.2rem 0 .5rem 1.3rem; }
+        li { margin-bottom:.15rem; }
+        .callout { background:var(--bg2); border-left:3px solid var(--pri); padding:.5rem .8rem; border-radius:0 var(--r) var(--r) 0; margin:.5rem 0; font-size:.84rem; }
+        .diagram { background:#0f172a; color:#e2e8f0; padding:1rem; border-radius:var(--r); font-family:'Cascadia Code','Fira Code',Consolas,monospace; font-size:.72rem; line-height:1.45; overflow-x:auto; white-space:pre; margin:.5rem 0; }
+        table { width:100%; border-collapse:collapse; margin:.4rem 0 .6rem; font-size:.82rem; }
+        th { background:var(--pri-dk); color:#fff; text-align:left; padding:.3rem .6rem; }
+        th:first-child { border-radius:6px 0 0 0; } th:last-child { border-radius:0 6px 0 0; }
+        td { padding:.25rem .6rem; border-bottom:1px solid var(--bdr); }
+        tr:nth-child(even) td { background:var(--bg2); }
+        code { background:#f1f5f9; padding:.1rem .3rem; border-radius:3px; font-size:.84em; font-family:Consolas,'Cascadia Code',monospace; }
+        .page-break { page-break-before:always; border-top:2px dashed var(--bdr); margin:1.2rem 0 .8rem; }
+        .two-col { display:grid; grid-template-columns:1fr 1fr; gap:.8rem; }
+        @media print { body { padding:.8rem; font-size:9.5pt; } .page-break { border:none; margin:.5rem 0; } }
+    </style>
+</head>
+<body>
+
+<!-- ══════════ PAGE 1 ══════════ -->
+
+<div class="doc-header">
+    <h1>DocXAI</h1>
+    <div class="subtitle">AI-Powered Document &amp; Test Automation Engine</div>
+    <div class="meta">GE Vernova — GCA Hackathon 2026 &nbsp;|&nbsp; Team 19 — MFG &nbsp;|&nbsp; .NET 10 &bull; Vertex AI (Gemini 2.0 Flash) &bull; Google Cloud Platform</div>
+</div>
+
+<!-- 1. Problem Statement -->
+<section>
+    <h2>1. Problem Statement</h2>
+    <p>Converting design documents into functional specifications and test cases is <strong>manual, slow, and error-prone</strong>. Business analysts write specs by hand; QA engineers separately author test scripts — often weeks apart. Key pain points:</p>
+    <ul>
+        <li><strong>Slow turnaround:</strong> Specs take days to draft; test scripts take additional days, delaying the entire SDLC.</li>
+        <li><strong>Inconsistency:</strong> Manual translation introduces gaps, ambiguities, and missed requirements.</li>
+        <li><strong>No traceability:</strong> No automated link between design → spec → tests.</li>
+        <li><strong>Version friction:</strong> Iterations managed in shared drives or email — files get overwritten or lost.</li>
+        <li><strong>Repetitive effort:</strong> Teams repeat the same read → write → test pattern with no reuse or automation.</li>
+    </ul>
+</section>
+
+<!-- 2. Use Case -->
+<section>
+    <h2>2. Use Case</h2>
+    <p>A project team receives a design document (<code>.docx</code> or Markdown). They need to:</p>
+    <ol>
+        <li>Produce a comprehensive <strong>Functional Specification</strong> capturing all requirements and edge cases.</li>
+        <li>Generate an executable <strong>Playwright test suite</strong> (TypeScript) that validates the system against the spec.</li>
+        <li>Store all artifacts with <strong>automatic versioning</strong> — nothing is ever overwritten.</li>
+    </ol>
+    <div class="callout">
+        <strong>Key Insight:</strong> The functional spec and test cases are two views of the same requirements. Generating both from a single document via AI ensures 100% traceability and eliminates the "telephone game" between design, spec, and QA.
+    </div>
+</section>
+
+<!-- 3. Proposed Solution -->
+<section>
+    <h2>3. Proposed Solution</h2>
+    <p><strong>DocXAI</strong> automates the design → spec → test pipeline using Gemini 2.0 Flash. Built as a clean-architecture .NET 10 app on Cloud Run with a browser UI for human-in-the-loop control.</p>
+    <div class="two-col">
+        <div>
+            <h3>Core Workflow</h3>
+            <ol>
+                <li><strong>Upload</strong> — drag a design doc into the browser, provide a Solution Name.</li>
+                <li><strong>AI Spec Generation</strong> — Gemini produces a Functional Specification (Markdown).</li>
+                <li><strong>Review &amp; Save</strong> — spec displayed in a Markdown viewer; copy or download as <code>.docx</code>.</li>
+                <li><strong>On-Demand Test Gen</strong> — user clicks "Generate Test Cases"; Gemini produces Playwright TypeScript.</li>
+                <li><strong>Review Tests</strong> — syntax-highlighted viewer with download and copy.</li>
+            </ol>
+        </div>
+        <div>
+            <h3>Key Design Decisions</h3>
+            <ul>
+                <li><strong>Human-in-the-loop:</strong> test generation is decoupled — user reviews spec first.</li>
+                <li><strong>Auto versioning:</strong> <code>_v1</code>, <code>_v2</code>, <code>_v3</code>… — never overwrites.</li>
+                <li><strong>Organised storage:</strong> <code>{Sol}/functional/</code> for specs, <code>{Sol}/test cases/</code> for tests.</li>
+                <li><strong>Zero-framework frontend:</strong> vanilla JS — no dependencies, instant load.</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<!-- ══════════ PAGE 2 ══════════ -->
+<div class="page-break"></div>
+
+<!-- 4. Architecture -->
+<section>
+    <h2>4. Solution Architecture</h2>
+
+    <div style="background:#0f172a;border-radius:10px;padding:1.2rem 1rem;margin:.5rem 0;color:#e2e8f0;font-family:'Segoe UI',system-ui,sans-serif;font-size:.8rem;">
+      <!-- Browser -->
+      <div style="border:2px solid #38bdf8;border-radius:8px;padding:.6rem;text-align:center;margin-bottom:.4rem;">
+        <span style="font-weight:700;color:#38bdf8;">🌐 Browser</span>
+        <span style="margin-left:.8rem;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:.2rem .5rem;font-size:.75rem;">📤 Upload</span>
+        <span style="margin-left:.4rem;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:.2rem .5rem;font-size:.75rem;">📄 Spec Viewer</span>
+        <span style="margin-left:.4rem;background:#1e293b;border:1px solid #334155;border-radius:6px;padding:.2rem .5rem;font-size:.75rem;">🧪 Test Viewer</span>
+      </div>
+      <div style="text-align:center;color:#475569;font-size:.7rem;">▼ REST API ▼</div>
+      <!-- Cloud Run -->
+      <div style="border:2px solid #6366f1;border-radius:8px;padding:.7rem;margin:.3rem 0;">
+        <div style="text-align:center;font-weight:700;color:#6366f1;margin-bottom:.5rem;">☁️ Cloud Run — ASP.NET Core 10</div>
+        <div style="background:linear-gradient(135deg,#312e81,#3730a3);border-radius:6px;padding:.35rem .7rem;margin-bottom:.35rem;">
+          <span style="font-weight:600;color:#c7d2fe;">🔌 API</span>
+          <span style="color:#a5b4fc;font-size:.72rem;font-family:Consolas,monospace;margin-left:.5rem;">/upload · /generate-tests · /test-content · /save-docx</span>
+        </div>
+        <div style="background:linear-gradient(135deg,#1e3a5f,#164e63);border-radius:6px;padding:.35rem .7rem;margin-bottom:.35rem;">
+          <span style="font-weight:600;color:#67e8f9;">⚙️ Application</span>
+          <span style="background:#0f172a;border:1px solid #155e75;border-radius:4px;padding:.1rem .4rem;font-size:.72rem;margin-left:.4rem;">ExecuteAsync → Spec</span>
+          <span style="background:#0f172a;border:1px solid #155e75;border-radius:4px;padding:.1rem .4rem;font-size:.72rem;margin-left:.3rem;">GenerateTestsAsync → Tests</span>
+        </div>
+        <div style="background:linear-gradient(135deg,#14532d,#064e3b);border-radius:6px;padding:.35rem .7rem;margin-bottom:.35rem;">
+          <span style="font-weight:600;color:#86efac;">🏛️ Domain</span>
+          <span style="color:#6ee7b7;font-size:.72rem;margin-left:.5rem;">DesignDocument · FunctionalSpec · TestScript · IAIGenerationService · IStorageRepository</span>
+        </div>
+        <div style="background:linear-gradient(135deg,#78350f,#713f12);border-radius:6px;padding:.35rem .7rem;">
+          <span style="font-weight:600;color:#fcd34d;">🔧 Infrastructure</span>
+          <span style="color:#fbbf24;font-size:.72rem;margin-left:.5rem;">GcpVertexAIService · GcpCloudStorageService · GcpSecretManagerService · OpenXmlSerializer</span>
+        </div>
+      </div>
+      <div style="text-align:center;color:#475569;font-size:.7rem;">▼ Google Cloud APIs ▼</div>
+      <!-- External -->
+      <div style="display:flex;justify-content:center;gap:.7rem;margin-top:.3rem;">
+        <div style="background:linear-gradient(135deg,#4338ca,#6366f1);border-radius:8px;padding:.5rem .9rem;text-align:center;">
+          <div>🤖</div><div style="font-weight:700;font-size:.8rem;">Vertex AI</div><div style="font-size:.68rem;color:#c7d2fe;">Gemini 2.0 Flash</div>
+        </div>
+        <div style="background:linear-gradient(135deg,#0369a1,#0891b2);border-radius:8px;padding:.5rem .9rem;text-align:center;">
+          <div>🗂️</div><div style="font-weight:700;font-size:.8rem;">Cloud Storage</div><div style="font-size:.68rem;color:#bae6fd;">Docs · Specs · Tests</div>
+        </div>
+        <div style="background:linear-gradient(135deg,#065f46,#059669);border-radius:8px;padding:.5rem .9rem;text-align:center;">
+          <div>🔐</div><div style="font-weight:700;font-size:.8rem;">Secret Manager</div><div style="font-size:.68rem;color:#a7f3d0;">Credentials</div>
+        </div>
+      </div>
+    </div>
+</section>
+
+<!-- 5. Data Flow -->
+<section>
+    <h2>5. Data Flow</h2>
+    <div class="diagram">
+PHASE 1 — Spec Generation                    PHASE 2 — Test Generation (On-Demand)
+
+ 📤 User uploads design.docx                  👆 User clicks "Generate Test Cases"
+      │  + solutionName                              │  sends spec content + path
+      ▼                                              ▼
+ POST /upload                                  POST /generate-tests
+      │                                              │
+      ├─► Save to GCS: {Sol}/{file}                  ├─► Vertex AI (Gemini)
+      ├─► Extract text (OpenXML)                     │   "Generate Playwright tests"
+      ├─► Vertex AI (Gemini)                         │
+      │   "Generate functional spec"                 ├─► Save to GCS:
+      ├─► Serialize to .docx                         │   {Sol}/test cases/
+      ├─► Save to GCS:                               │   {Sol}_testcases_v1.spec.ts
+      │   {Sol}/functional/                          │
+      │   {Sol}_functional_v1.docx                   └─► Return TypeScript to browser
+      └─► Return Markdown to browser                     → highlight.js viewer
+          → marked.js viewer</div>
+</section>
+
+<!-- 6. Tech Stack + Impact (side by side) -->
+<section>
+    <div class="two-col">
+        <div>
+            <h2>6. Technology Stack</h2>
+            <table>
+                <thead><tr><th>Component</th><th>Technology</th></tr></thead>
+                <tbody>
+                    <tr><td>Runtime</td><td>.NET 10, ASP.NET Core</td></tr>
+                    <tr><td>Architecture</td><td>Clean / Onion (4 layers)</td></tr>
+                    <tr><td>AI Model</td><td>Vertex AI — Gemini 2.0 Flash</td></tr>
+                    <tr><td>Hosting</td><td>Google Cloud Run</td></tr>
+                    <tr><td>Storage</td><td>Google Cloud Storage</td></tr>
+                    <tr><td>Secrets</td><td>Google Secret Manager</td></tr>
+                    <tr><td>Test Framework</td><td>Playwright (TypeScript)</td></tr>
+                    <tr><td>Doc Format</td><td>OpenXML (<code>.docx</code>)</td></tr>
+                    <tr><td>Frontend</td><td>Vanilla JS, marked, hljs</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div>
+            <h2>7. Impact &amp; Benefits</h2>
+            <table>
+                <thead><tr><th>Metric</th><th>Before</th><th>After</th></tr></thead>
+                <tbody>
+                    <tr><td>Spec creation</td><td>2–5 days</td><td>&lt; 2 min</td></tr>
+                    <tr><td>Test creation</td><td>3–7 days</td><td>&lt; 2 min</td></tr>
+                    <tr><td>Traceability</td><td>Manual</td><td>100% auto</td></tr>
+                    <tr><td>Versioning</td><td>Shared drives</td><td>Auto v1,v2…</td></tr>
+                </tbody>
+            </table>
+
+            <h2 style="margin-top:.6rem;">8. Future Enhancements</h2>
+            <ul style="font-size:.82rem;">
+                <li>Test execution via Cloud Build / Azure Pipelines</li>
+                <li>Jira / Azure DevOps user story creation</li>
+                <li>Multi-model support (Gemini, Claude, GPT)</li>
+                <li>Regression detection across spec versions</li>
+                <li>Team auth, RBAC, shared workspaces</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+</body>
+</html>
