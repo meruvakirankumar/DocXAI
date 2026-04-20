@@ -81,32 +81,21 @@ public sealed class ProcessDocumentUseCase : IProcessDocumentUseCase
             // e.g. "MyProject/design.docx" → "MyProject/functional/functional_design.docx"
             // Versioning:    "MyProject/functional/functional_design-001.docx", -002, …
             var solutionName  = ExtractSolutionName(storageEvent.Name);
-            var baseFileName  = FunctionalSpec.DeriveBaseFileName(storageEvent.Name);
             var outputFolder  = $"{solutionName}/functional";
-            var basePath      = $"{outputFolder}/{baseFileName}";
             var outputPrefix  = $"{outputFolder}/";
 
             var existingOutputs = await _storage.ListObjectNamesAsync(storageEvent.Bucket, outputPrefix, ct);
             var existingSet     = new HashSet<string>(existingOutputs, StringComparer.OrdinalIgnoreCase);
 
+            // Naming pattern: {SolutionName}_functional_v1.docx, v2, …
+            int specVersion = 1;
             string resolvedOutputPath;
-            if (!existingSet.Contains(basePath))
+            do
             {
-                resolvedOutputPath = basePath;
+                resolvedOutputPath = $"{outputFolder}/{solutionName}_functional_v{specVersion}.docx";
+                specVersion++;
             }
-            else
-            {
-                var stem = Path.GetFileNameWithoutExtension(baseFileName); // e.g. "functional_design"
-                int version = 1;
-                string candidate;
-                do
-                {
-                    candidate = $"{outputFolder}/{stem}-{version:D3}.docx";
-                    version++;
-                }
-                while (existingSet.Contains(candidate) && version <= 999);
-                resolvedOutputPath = candidate;
-            }
+            while (existingSet.Contains(resolvedOutputPath) && specVersion <= 9999);
 
             _logger.LogInformation("Resolved output path for functional spec. Path={Path}", resolvedOutputPath);
 
@@ -126,46 +115,6 @@ public sealed class ProcessDocumentUseCase : IProcessDocumentUseCase
 
             _logger.LogInformation("Functional spec saved as .docx. Path={Path}", functionalSpec.OutputPath);
 
-            // ── Step 4: Vertex AI (Gemini) → Generate Playwright Test Script ──
-            _logger.LogInformation("Invoking Vertex AI (Gemini) to generate Playwright test script...");
-            var testContent = await _aiService.GeneratePlaywrightTestsAsync(functionalSpec.Content, ct);
-            var testScript = TestScript.Create(testContent, functionalSpec, _options.OutputFolder);
-            context.SetTestScript(testScript);
-
-            _logger.LogInformation("Test script generated. StoragePath={Path}", testScript.StoragePath);
-
-            // ── Step 5: Save Playwright test script to Cloud Storage ──────────
-            await _storage.SaveFileAsync(testScript.BucketName, testScript.StoragePath, testScript.Content, "text/plain", ct);
-            _logger.LogInformation("Playwright test script saved to Cloud Storage. Path={Path}", testScript.StoragePath);
-
-            // ── Step 6: Trigger Cloud Build to execute the test script ────────
-            _logger.LogInformation("Triggering Cloud Build job for test execution...");
-
-            BuildJob? buildJob = null;
-            string? buildWarning = null;
-
-            try
-            {
-                buildJob = await _buildService.TriggerTestExecutionAsync(
-                    _options.ProjectId,
-                    testScript.StoragePath,
-                    ct);
-                context.SetBuildJob(buildJob);
-
-                _logger.LogInformation(
-                    "Cloud Build triggered. JobId={JobId}, Status={Status}, LogUrl={LogUrl}",
-                    buildJob.JobId, buildJob.Status, buildJob.LogUrl);
-            }
-            catch (Exception buildEx)
-            {
-                // Cloud Build failure is non-fatal — the functional spec was already generated.
-                // Surface a warning so the caller knows Cloud Build was skipped.
-                buildWarning = $"Cloud Build step skipped: {buildEx.Message}";
-                _logger.LogWarning(buildEx,
-                    "Cloud Build trigger failed (non-fatal). Pipeline will still return the functional spec. Reason={Reason}",
-                    buildEx.Message);
-            }
-
             context.MarkCompleted();
 
             _logger.LogInformation(
@@ -175,12 +124,11 @@ public sealed class ProcessDocumentUseCase : IProcessDocumentUseCase
                 Success: true,
                 CorrelationId: context.CorrelationId,
                 FunctionalSpecPath: functionalSpec.OutputPath,
-                TestScriptPath: testScript.StoragePath,
-                BuildJobId: buildJob?.JobId,
-                BuildLogUrl: buildJob?.LogUrl,
+                TestScriptPath: null,
+                BuildJobId: null,
+                BuildLogUrl: null,
                 ErrorMessage: null,
-                FunctionalSpecContent: functionalSpec.Content,
-                BuildWarning: buildWarning);
+                FunctionalSpecContent: functionalSpec.Content);
         }
         catch (Exception ex)
         {
@@ -201,9 +149,110 @@ public sealed class ProcessDocumentUseCase : IProcessDocumentUseCase
         }
     }
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ── GenerateTestsAsync ────────────────────────────────────────────────────
 
-    /// <summary>
+    public async Task<GenerationResultDto> GenerateTestsAsync(
+        string functionalSpecContent,
+        string functionalSpecPath,
+        CancellationToken ct = default)
+    {
+        var correlationId = Guid.NewGuid().ToString();
+
+        _logger.LogInformation(
+            "Starting test generation. SpecPath={Path}, CorrelationId={CorrelationId}",
+            functionalSpecPath, correlationId);
+
+        try
+        {
+            var bucket = _options.UploadBucket;
+
+            // ── Resolve versioned output path for the test script ─────────────
+            // Folder:    {solutionName}/testcases/
+            // Base name: testcases_{stem}.spec.ts
+            // e.g. "MyProject/functional/functional_design.docx"
+            //      → "MyProject/testcases/testcases_design.spec.ts"
+            // Versioning: -001, -002, … applied when the base name already exists.
+            var solutionName   = ExtractSolutionName(functionalSpecPath);
+            var testFolder     = $"{solutionName}/test cases";
+            var testPrefix     = $"{testFolder}/";
+
+            var existingTests = await _storage.ListObjectNamesAsync(bucket, testPrefix, ct);
+            var existingSet   = new HashSet<string>(existingTests, StringComparer.OrdinalIgnoreCase);
+
+            // Naming pattern: {SolutionName}_testcases_v1.spec.ts, v2, …
+            int tcVersion = 1;
+            string resolvedTestPath;
+            do
+            {
+                resolvedTestPath = $"{testFolder}/{solutionName}_testcases_v{tcVersion}.spec.ts";
+                tcVersion++;
+            }
+            while (existingSet.Contains(resolvedTestPath) && tcVersion <= 9999);
+
+            _logger.LogInformation("Resolved output path for test script. Path={Path}", resolvedTestPath);
+
+            // ── Step 1: Vertex AI (Gemini) → Generate Playwright Test Script ──
+            _logger.LogInformation("Invoking Vertex AI (Gemini) to generate Playwright test script...");
+            var testContent = await _aiService.GeneratePlaywrightTestsAsync(functionalSpecContent, ct);
+            var testScript  = TestScript.Create(testContent, bucket, resolvedTestPath);
+
+            _logger.LogInformation("Test script generated. StoragePath={Path}", testScript.StoragePath);
+
+            // ── Step 2: Save Playwright test script to Cloud Storage ──────────
+            await _storage.SaveFileAsync(
+                testScript.BucketName, testScript.StoragePath, testScript.Content, "text/plain", ct);
+
+            _logger.LogInformation("Playwright test script saved to Cloud Storage. Path={Path}", testScript.StoragePath);
+
+            // ── Step 3: Trigger Cloud Build ───────────────────────────────────
+            BuildJob? buildJob    = null;
+            string?  buildWarning = null;
+
+            try
+            {
+                buildJob = await _buildService.TriggerTestExecutionAsync(
+                    _options.ProjectId, testScript.StoragePath, ct);
+
+                _logger.LogInformation(
+                    "Cloud Build triggered. JobId={JobId}, Status={Status}, LogUrl={LogUrl}",
+                    buildJob.JobId, buildJob.Status, buildJob.LogUrl);
+            }
+            catch (Exception buildEx)
+            {
+                buildWarning = $"Cloud Build step skipped: {buildEx.Message}";
+                _logger.LogWarning(buildEx,
+                    "Cloud Build trigger failed (non-fatal). Reason={Reason}", buildEx.Message);
+            }
+
+            return new GenerationResultDto(
+                Success:             true,
+                CorrelationId:       correlationId,
+                FunctionalSpecPath:  functionalSpecPath,
+                TestScriptPath:      testScript.StoragePath,
+                BuildJobId:          buildJob?.JobId,
+                BuildLogUrl:         buildJob?.LogUrl,
+                ErrorMessage:        null,
+                BuildWarning:        buildWarning,
+                TestScriptContent:   testScript.Content);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Test generation failed. SpecPath={Path}, CorrelationId={CorrelationId}",
+                functionalSpecPath, correlationId);
+
+            return new GenerationResultDto(
+                Success:            false,
+                CorrelationId:      correlationId,
+                FunctionalSpecPath: functionalSpecPath,
+                TestScriptPath:     null,
+                BuildJobId:         null,
+                BuildLogUrl:        null,
+                ErrorMessage:       ex.Message);
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
     /// Extracts the solution name (first path segment) from the GCS object name.
     /// "MyProject/design.docx" → "MyProject"
     /// "design.docx"           → "documents"  (fallback)

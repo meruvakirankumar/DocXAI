@@ -383,12 +383,16 @@ body {
 .btn-primary {
     background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
     color: #fff;
+    box-shadow: 0 2px 8px rgba(37,99,235,.28);
+    letter-spacing: .01em;
+}
+
+/* Full-width variant — only on the upload card's main CTA */
+.upload-card .btn-primary {
     margin-top: 1.5rem;
     width: 100%;
     padding: .88rem 1.5rem;
     font-size: .98rem;
-    box-shadow: 0 2px 8px rgba(37,99,235,.28);
-    letter-spacing: .01em;
 }
 
 .btn-primary:not(:disabled):hover {
@@ -397,6 +401,20 @@ body {
 }
 
 .btn-primary:not(:disabled):active { transform: translateY(0); }
+
+/* Inline accent — same colours as btn-primary but sized like btn-sm */
+.btn-accent {
+    background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
+    color: #fff;
+    box-shadow: 0 1px 6px rgba(37,99,235,.22);
+}
+
+.btn-accent:not(:disabled):hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 12px rgba(37,99,235,.38);
+}
+
+.btn-accent:not(:disabled):active { transform: translateY(0); }
 
 .btn-outline {
     background: transparent;
@@ -409,6 +427,21 @@ body {
     color: var(--color-primary);
     background: var(--color-primary-light);
 }
+
+/* Secondary — green gradient */
+.btn-secondary {
+    background: linear-gradient(135deg, #059669, #0d9488);
+    color: #fff;
+    box-shadow: 0 1px 6px rgba(5,150,105,.22);
+}
+
+.btn-secondary:not(:disabled):hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 12px rgba(5,150,105,.4);
+    background: linear-gradient(135deg, #047857, #0f766e);
+}
+
+.btn-secondary:not(:disabled):active { transform: translateY(0); }
 
 .btn-sm {
     font-size: .8rem;
@@ -489,7 +522,22 @@ body {
     color: var(--color-text);
 }
 
-.result-actions { display: flex; gap: .5rem; }
+.result-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .45rem;
+}
+
+/* All action-row buttons share identical geometry */
+.result-actions .btn {
+    font-size: .8rem;
+    font-weight: 600;
+    padding: .42rem .9rem;
+    border-radius: var(--radius-xs);
+    white-space: nowrap;
+    line-height: 1.4;
+}
 
 .result-meta {
     display: flex;
@@ -616,6 +664,140 @@ body {
 
 .build-warning a { color: var(--color-primary); font-weight: 600; text-decoration: none; margin-left: .3rem; }
 .build-warning a:hover { text-decoration: underline; }
+
+/* ── Test Cases Card ──────────────────────────────────────────────────── */
+.testcases-card { padding: 0; overflow: hidden; }
+
+.testcases-card .result-header {
+    padding: 1.25rem 1.75rem;
+    margin-bottom: 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.tc-title-group {
+    display: flex;
+    align-items: center;
+    gap: .55rem;
+}
+
+.tc-title-icon {
+    width: 18px;
+    height: 18px;
+    color: #059669;
+    flex-shrink: 0;
+}
+
+.tc-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    padding: .85rem 1.75rem .25rem;
+}
+
+.tc-meta:empty { padding: 0; }
+
+/* ── Testcases Viewer ─────────────────────────────────────────────────── */
+.testcases-viewer {
+    border-top: 1px solid #1e293b;
+    overflow: hidden;
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.tc-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #1a2233;
+    padding: .45rem 1.25rem;
+    border-bottom: 1px solid #2d3a4f;
+    user-select: none;
+}
+
+.tc-lang-badge {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #61afef;
+    background: rgba(97,175,239,.12);
+    border: 1px solid rgba(97,175,239,.25);
+    padding: .18rem .55rem;
+    border-radius: 4px;
+}
+
+.tc-line-count {
+    font-size: .72rem;
+    color: #5c6779;
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+}
+
+.tc-pre {
+    margin: 0 !important;
+    border-radius: 0 !important;
+    max-height: 66vh;
+    overflow-y: auto;
+    overflow-x: auto;
+    font-size: .84rem !important;
+    line-height: 1.65 !important;
+    tab-size: 2;
+}
+
+.tc-pre::-webkit-scrollbar { width: 8px; height: 8px; }
+.tc-pre::-webkit-scrollbar-track { background: #1a1e2e; }
+.tc-pre::-webkit-scrollbar-thumb { background: #3d4a5c; border-radius: 999px; }
+.tc-pre::-webkit-scrollbar-corner { background: #1a1e2e; }
+
+/* Atom One Dark overrides for consistency */
+.tc-pre code.hljs {
+    padding: 1.35rem 1.6rem !important;
+    border-radius: 0 !important;
+    font-family: 'Cascadia Code', 'Fira Code', Consolas, 'Courier New', monospace !important;
+    font-size: inherit !important;
+    line-height: inherit !important;
+    display: block;
+}
+
+/* ── Test Cases Load Error ─────────────────────────────────────────────── */
+.tc-load-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3.5rem 2rem;
+    background: #0d1117;
+    text-align: center;
+    gap: .8rem;
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.tc-load-error-icon { font-size: 2rem; line-height: 1; }
+
+.tc-load-error-title {
+    color: #e2e8f0;
+    font-weight: 700;
+    font-size: .95rem;
+}
+
+.tc-load-error-msg {
+    color: #94a3b8;
+    font-size: .83rem;
+    max-width: 500px;
+    line-height: 1.6;
+}
+
+.tc-load-error-path {
+    color: #4b5563;
+    font-family: 'Cascadia Code', Consolas, monospace;
+    font-size: .72rem;
+    word-break: break-all;
+    max-width: 620px;
+    background: #1e293b;
+    border: 1px solid #2d3a4f;
+    padding: .3rem .8rem;
+    border-radius: 4px;
+}
+
+.tc-load-error-actions { margin-top: .5rem; }
 
 /* ── Utility ──────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }

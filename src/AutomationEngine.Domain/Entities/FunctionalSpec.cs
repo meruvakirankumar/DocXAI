@@ -27,14 +27,11 @@ public sealed class FunctionalSpec
     }
 
     /// <summary>
-    /// Derives the base output filename from the uploaded object name.
-    /// e.g. "MyProject/design.docx" → "functional_design.docx"
-    ///      "MyProject/spec-001.md"  → "functional_spec-001.docx"
+    /// Derives the base output filename from the solution name.
+    /// e.g. "MyProject" → "MyProject_functional_0001.docx"
     /// </summary>
-    public static string DeriveBaseFileName(string objectName)
+    public static string DeriveBaseFileName(string solutionName)
     {
-        var fileName = Path.GetFileName(objectName);          // strip folder prefix
-        var stem     = Path.GetFileNameWithoutExtension(fileName);
-        return $"functional_{stem}.docx";
+        return $"{solutionName}_functional_0001.docx";
     }
 }

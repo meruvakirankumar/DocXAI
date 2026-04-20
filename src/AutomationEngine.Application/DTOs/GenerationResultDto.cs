@@ -9,5 +9,6 @@ public sealed record GenerationResultDto(
     string? BuildLogUrl,
     string? ErrorMessage,
     string? FunctionalSpecContent = null,
-    string? BuildWarning = null
+    string? BuildWarning = null,
+    string? TestScriptContent = null
 );

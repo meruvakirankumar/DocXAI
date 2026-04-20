@@ -245,10 +245,80 @@ public sealed class OrchestratorController : ControllerBase
             service = "AutomationEngineService",
             timestamp = DateTimeOffset.UtcNow
         });
+
+    /// <summary>
+    /// Generates Playwright test scripts from an already-created functional specification.
+    /// Called by the frontend "Generate Test Cases" button.
+    /// </summary>
+    [HttpPost("generate-tests")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    public async Task<IActionResult> GenerateTestsAsync(
+        [FromBody] GenerateTestsRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request?.FunctionalSpecContent))
+            return BadRequest(new { error = "FunctionalSpecContent is required." });
+
+        if (string.IsNullOrWhiteSpace(request.FunctionalSpecPath))
+            return BadRequest(new { error = "FunctionalSpecPath is required." });
+
+        var result = await _processDocumentUseCase.GenerateTestsAsync(
+            request.FunctionalSpecContent, request.FunctionalSpecPath, ct);
+
+        if (!result.Success)
+        {
+            _logger.LogError(
+                "Test generation failed. CorrelationId={CorrelationId}, Error={Error}",
+                result.CorrelationId, result.ErrorMessage);
+
+            return StatusCode(StatusCodes.Status500InternalServerError, result);
+        }
+
+        _logger.LogInformation(
+            "Test generation completed. CorrelationId={CorrelationId}", result.CorrelationId);
+
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Reads a test-script file from Cloud Storage by its GCS path and returns the
+    /// raw text content. Used by the frontend when testScriptContent is absent in
+    /// the generate-tests response (e.g. the file was saved but not echoed back).
+    /// </summary>
+    [HttpGet("test-content")]
+    public async Task<IActionResult> GetTestContentAsync(
+        [FromQuery] string path, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return BadRequest(new { error = "path is required." });
+
+        var bucket = _options.UploadBucket;
+        if (string.IsNullOrWhiteSpace(bucket))
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "Upload bucket is not configured." });
+
+        try
+        {
+            _logger.LogInformation("Fetching test-script content from GCS. Bucket={Bucket}, Path={Path}", bucket, path);
+            var content = await _storage.ReadFileContentAsync(bucket, path, ct);
+            return Ok(new { content });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to read test-script from GCS. Path={Path}", path);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = $"Could not read test file: {ex.Message}" });
+        }
+    }
 }
 
 /// <summary>Request body for the save-docx endpoint.</summary>
 public sealed record SaveDocxRequest(
     [Required] string Content,
     string? FileName = null
+);
+
+/// <summary>Request body for the generate-tests endpoint.</summary>
+public sealed record GenerateTestsRequest(
+    [Required] string FunctionalSpecContent,
+    [Required] string FunctionalSpecPath
 );

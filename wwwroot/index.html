@@ -5,7 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DocXAI — Intelligent Document Generator</title>
     <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" />
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 </head>
 <body>
 
@@ -131,7 +133,28 @@
             <div class="result-header">
                 <h2>Generated Functional Specification</h2>
                 <div class="result-actions">
-                    <button id="save-btn" class="btn btn-primary btn-sm">
+                    <button id="view-tests-btn" class="btn btn-secondary btn-sm hidden">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        View Test Cases
+                    </button>
+                    <button id="gen-tests-btn" class="btn btn-secondary btn-sm">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="9 11 12 14 22 4"/>
+                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                        </svg>
+                        <span class="btn-label">Generate Test Cases</span>
+                        <svg class="btn-spinner hidden" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" stroke="currentColor"
+                                    stroke-width="3" fill="none" stroke-dasharray="31.4 31.4"
+                                    stroke-linecap="round"/>
+                        </svg>
+                    </button>
+                    <button id="save-btn" class="btn btn-accent btn-sm">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
                              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -158,7 +181,73 @@
                 </div>
             </div>
             <div class="result-meta" id="result-meta"></div>
+            <div id="test-gen-status" class="hidden" style="margin:0.5rem 0;font-size:0.85rem;color:var(--color-text-secondary)"></div>
             <div id="document-viewer" class="document-viewer"></div>
+        </section>
+
+        <!-- Test Cases Panel -->
+        <section id="testcases-section" class="card testcases-card hidden">
+            <div class="result-header">
+                <div class="tc-title-group">
+                    <svg class="tc-title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2v-4M9 21H5a2 2 0 0 1-2-2v-4m0 0h18"/>
+                    </svg>
+                    <h2>Generated Test Cases</h2>
+                </div>
+                <div class="result-actions">
+                    <button id="tc-download-btn" class="btn btn-accent btn-sm">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download .spec.ts
+                    </button>
+                    <button id="tc-copy-btn" class="btn btn-outline btn-sm" title="Copy to clipboard">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                        </svg>
+                        Copy
+                    </button>
+                    <button id="tc-back-btn" class="btn btn-outline btn-sm">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="15 18 9 12 15 6"/>
+                        </svg>
+                        Back to Spec
+                    </button>
+                    <button id="tc-new-upload-btn" class="btn btn-outline btn-sm">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>
+                        </svg>
+                        New Upload
+                    </button>
+                </div>
+            </div>
+            <div class="tc-meta" id="tc-meta"></div>
+            <div id="tc-build-banner" class="build-warning hidden"></div>
+            <div class="testcases-viewer">
+                <div class="tc-toolbar">
+                    <span class="tc-lang-badge">TypeScript &bull; Playwright</span>
+                    <span id="tc-line-count" class="tc-line-count"></span>
+                </div>
+                <!-- Error state shown when content cannot be loaded -->
+                <div id="tc-load-error" class="tc-load-error hidden">
+                    <div class="tc-load-error-icon">&#x26A0;&#xFE0F;</div>
+                    <p class="tc-load-error-title">Test content could not be loaded</p>
+                    <p id="tc-load-error-msg" class="tc-load-error-msg"></p>
+                    <p id="tc-load-error-path" class="tc-load-error-path"></p>
+                    <div class="tc-load-error-actions">
+                        <button id="tc-retry-btn" class="btn btn-outline btn-sm">&#x21BA;&nbsp;Retry</button>
+                    </div>
+                </div>
+                <pre id="tc-pre" class="tc-pre"><code id="tc-code" class="language-typescript"></code></pre>
+            </div>
         </section>
 
     </main>
