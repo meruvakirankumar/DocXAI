@@ -252,6 +252,81 @@ public sealed class ProcessDocumentUseCase : IProcessDocumentUseCase
         }
     }
 
+    // ── GenerateTestSuiteAsync ────────────────────────────────────────────────
+
+    public async Task<GenerationResultDto> GenerateTestSuiteAsync(
+        string functionalSpecContent,
+        string functionalSpecPath,
+        CancellationToken ct = default)
+    {
+        var correlationId = Guid.NewGuid().ToString();
+
+        _logger.LogInformation(
+            "Starting test suite generation. SpecPath={Path}, CorrelationId={CorrelationId}",
+            functionalSpecPath, correlationId);
+
+        try
+        {
+            var bucket = _options.UploadBucket;
+
+            var solutionName   = ExtractSolutionName(functionalSpecPath);
+            var testFolder     = $"{solutionName}/test suites";
+            var testPrefix     = $"{testFolder}/";
+
+            var existingTests = await _storage.ListObjectNamesAsync(bucket, testPrefix, ct);
+            var existingSet   = new HashSet<string>(existingTests, StringComparer.OrdinalIgnoreCase);
+
+            int tcVersion = 1;
+            string resolvedTestPath;
+            do
+            {
+                resolvedTestPath = $"{testFolder}/{solutionName}_testsuite_v{tcVersion}.md";
+                tcVersion++;
+            }
+            while (existingSet.Contains(resolvedTestPath) && tcVersion <= 9999);
+
+            _logger.LogInformation("Resolved output path for test suite. Path={Path}", resolvedTestPath);
+
+            _logger.LogInformation("Invoking Vertex AI (Gemini) to generate human-readable test suite...");
+            var testContent = await _aiService.GenerateTestSuiteAsync(functionalSpecContent, ct);
+            
+            // We can reuse TestScript entity just to hold the content/path, or just upload directly
+            var testScript  = TestScript.Create(testContent, bucket, resolvedTestPath);
+
+            await _storage.SaveFileAsync(
+                testScript.BucketName, testScript.StoragePath, testScript.Content, "text/markdown", ct);
+
+            _logger.LogInformation("Test suite saved to Cloud Storage. Path={Path}", testScript.StoragePath);
+
+            // Return the same DTO structure, putting the markdown in TestScriptContent
+            return new GenerationResultDto(
+                Success:             true,
+                CorrelationId:       correlationId,
+                FunctionalSpecPath:  functionalSpecPath,
+                TestScriptPath:      testScript.StoragePath,
+                BuildJobId:          null,
+                BuildLogUrl:         null,
+                ErrorMessage:        null,
+                BuildWarning:        null,
+                TestScriptContent:   testScript.Content);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Test suite generation failed. SpecPath={Path}, CorrelationId={CorrelationId}",
+                functionalSpecPath, correlationId);
+
+            return new GenerationResultDto(
+                Success:            false,
+                CorrelationId:      correlationId,
+                FunctionalSpecPath: functionalSpecPath,
+                TestScriptPath:     null,
+                BuildJobId:         null,
+                BuildLogUrl:        null,
+                ErrorMessage:       ex.Message);
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
     /// Extracts the solution name (first path segment) from the GCS object name.
     /// "MyProject/design.docx" → "MyProject"

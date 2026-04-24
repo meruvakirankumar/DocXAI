@@ -280,6 +280,39 @@ public sealed class OrchestratorController : ControllerBase
     }
 
     /// <summary>
+    /// Generates a human-readable test suite from an already-created functional specification.
+    /// Called by the frontend "Test Suite" button.
+    /// </summary>
+    [HttpPost("generate-test-suite")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    public async Task<IActionResult> GenerateTestSuiteAsync(
+        [FromBody] GenerateTestsRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request?.FunctionalSpecContent))
+            return BadRequest(new { error = "FunctionalSpecContent is required." });
+
+        if (string.IsNullOrWhiteSpace(request.FunctionalSpecPath))
+            return BadRequest(new { error = "FunctionalSpecPath is required." });
+
+        var result = await _processDocumentUseCase.GenerateTestSuiteAsync(
+            request.FunctionalSpecContent, request.FunctionalSpecPath, ct);
+
+        if (!result.Success)
+        {
+            _logger.LogError(
+                "Test suite generation failed. CorrelationId={CorrelationId}, Error={Error}",
+                result.CorrelationId, result.ErrorMessage);
+
+            return StatusCode(StatusCodes.Status500InternalServerError, result);
+        }
+
+        _logger.LogInformation(
+            "Test suite generation completed. CorrelationId={CorrelationId}", result.CorrelationId);
+
+        return Ok(result);
+    }
+
+    /// <summary>
     /// Reads a test-script file from Cloud Storage by its GCS path and returns the
     /// raw text content. Used by the frontend when testScriptContent is absent in
     /// the generate-tests response (e.g. the file was saved but not echoed back).

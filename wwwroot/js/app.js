@@ -25,6 +25,7 @@
     const saveBtn         = document.getElementById('save-btn');
     const newUploadBtn    = document.getElementById('new-upload-btn');
     const genTestsBtn     = document.getElementById('gen-tests-btn');
+    const testSuiteBtn    = document.getElementById('test-suite-btn');
     const viewTestsBtn    = document.getElementById('view-tests-btn');
     const testGenStatus   = document.getElementById('test-gen-status');
     const solutionNameInput = document.getElementById('solution-name');
@@ -45,11 +46,28 @@
     const tcBackBtn        = document.getElementById('tc-back-btn');
     const tcNewUploadBtn   = document.getElementById('tc-new-upload-btn');
 
+    // Test Suite section
+    const viewTestSuiteBtn = document.getElementById('view-testsuite-btn');
+    const testsuiteSection = document.getElementById('testsuite-section');
+    const tsViewer         = document.getElementById('ts-viewer');
+    const tsMeta           = document.getElementById('ts-meta');
+    const tsBuildBanner    = document.getElementById('ts-build-banner');
+    const tsLoadError      = document.getElementById('ts-load-error');
+    const tsLoadErrorMsg   = document.getElementById('ts-load-error-msg');
+    const tsLoadErrorPath  = document.getElementById('ts-load-error-path');
+    const tsRetryBtn       = document.getElementById('ts-retry-btn');
+    const tsDownloadBtn    = document.getElementById('ts-download-btn');
+    const tsCopyBtn        = document.getElementById('ts-copy-btn');
+    const tsBackBtn        = document.getElementById('ts-back-btn');
+    const tsNewUploadBtn   = document.getElementById('ts-new-upload-btn');
+
     let selectedFile    = null;
     let rawSpecContent  = '';
     let rawSpecPath     = '';
     let rawTestContent  = '';
     let rawTestPath     = '';
+    let rawSuiteContent = '';
+    let rawSuitePath    = '';
 
     // ── Helpers ──────────────────────────────────────────────────────────────
     function formatBytes(bytes) {
@@ -367,6 +385,49 @@
         }
     });
 
+    // ── Generate Test Suite ─────────────────────────────────────────────────
+    testSuiteBtn.addEventListener('click', async () => {
+        if (!rawSpecContent || !rawSpecPath) return;
+
+        const tsLabel   = testSuiteBtn.querySelector('.btn-label');
+        const tsSpinner = testSuiteBtn.querySelector('.btn-spinner');
+        testSuiteBtn.disabled = true;
+        tsLabel.textContent = 'Generating\u2026';
+        tsSpinner.classList.remove('hidden');
+        testGenStatus.textContent = 'Calling Vertex AI to generate human-readable Test Suite\u2026';
+        testGenStatus.classList.remove('hidden');
+
+        try {
+            const response = await fetch('/api/orchestrator/generate-test-suite', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    functionalSpecContent: rawSpecContent,
+                    functionalSpecPath: rawSpecPath
+                })
+            });
+
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(data.errorMessage || data.error || `Server error ${response.status}`);
+            }
+
+            tsLabel.textContent = 'Test Suite';
+            testSuiteBtn.disabled = false;
+            tsSpinner.classList.add('hidden');
+            testGenStatus.classList.add('hidden');
+
+            displayTestSuite(data);
+
+        } catch (err) {
+            testGenStatus.textContent = 'Error: ' + (err.message || 'Unknown error');
+            tsLabel.textContent = 'Test Suite';
+            testSuiteBtn.disabled = false;
+            tsSpinner.classList.add('hidden');
+        }
+    });
+
     // ── Display Test Cases ──────────────────────────────────────────────────
     function displayTestCases(data) {
         rawTestContent = data.testScriptContent || '';
@@ -590,6 +651,226 @@
         newUploadBtn.click();
     });
 
+    // ── Display Test Suite ──────────────────────────────────────────────────
+    function displayTestSuite(data) {
+        rawSuiteContent = data.testScriptContent || '';
+        rawSuitePath    = data.testScriptPath    || '';
+
+        // Build meta badges
+        let metaHtml = '';
+        if (rawSuitePath) {
+            metaHtml += `<span class="meta-badge">&#x1F4C4; ${escapeHtml(rawSuitePath)}</span>`;
+        }
+        tsMeta.innerHTML = metaHtml;
+
+        // Show the View Test Suite button in the spec panel for future navigation
+        viewTestSuiteBtn.classList.remove('hidden');
+
+        // Navigate first so the section is visible before we render
+        resultSection.classList.add('hidden');
+        testsuiteSection.classList.remove('hidden');
+        hideTsError();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        if (rawSuiteContent) {
+            renderTestSuiteCode(rawSuiteContent);
+        } else if (rawSuitePath) {
+            tsViewer.innerHTML = '<p>Loading…</p>';
+            fetchTestSuiteContent(rawSuitePath).then(({ content, status }) => {
+                if (content) {
+                    renderTestSuiteCode(content);
+                } else if (status === 'not-found') {
+                    showTsError(
+                        'The server needs to be restarted to load test suite content. ' +
+                        'Click Back to Spec, restart the server, then click Test Suite again.',
+                        rawSuitePath
+                    );
+                } else {
+                    showTsError(
+                        status || 'Could not retrieve content from Cloud Storage.',
+                        rawSuitePath
+                    );
+                }
+            });
+        } else {
+            showTsError('No test suite content was returned by the server.', null);
+        }
+    }
+
+    // ── Test Suite: Retry loading content ──────────────────────────────────
+    tsRetryBtn.addEventListener('click', () => {
+        if (!rawSuitePath) return;
+        hideTsError();
+        tsViewer.innerHTML = '<p>Loading…</p>';
+        fetchTestSuiteContent(rawSuitePath).then(({ content, status }) => {
+            if (content) {
+                renderTestSuiteCode(content);
+            } else if (status === 'not-found') {
+                showTsError(
+                    'Server endpoint still unavailable. Restart the server and click Test Suite again.',
+                    rawSuitePath
+                );
+            } else {
+                showTsError(
+                    status || 'Could not retrieve content from Cloud Storage.',
+                    rawSuitePath
+                );
+            }
+        });
+    });
+
+    async function fetchTestSuiteContent(path) {
+        try {
+            const r = await fetch(`/api/orchestrator/test-content?path=${encodeURIComponent(path)}`);
+            if (r.status === 404) {
+                return { content: '', status: 'not-found' };
+            }
+            if (!r.ok) {
+                const d = await r.json().catch(() => ({}));
+                return { content: '', status: d.error || `Server error ${r.status}` };
+            }
+            const d = await r.json().catch(() => ({}));
+            const content = d.content || '';
+            if (content) rawSuiteContent = content;
+            return { content, status: null };
+        } catch (e) {
+            return { content: '', status: e.message || 'Network error' };
+        }
+    }
+
+    function showTsError(msg, path) {
+        tsLoadErrorMsg.textContent  = msg;
+        tsLoadErrorPath.textContent = path || '';
+        tsLoadErrorPath.style.display = path ? '' : 'none';
+        tsLoadError.classList.remove('hidden');
+        tsViewer.classList.add('hidden');
+    }
+
+    function hideTsError() {
+        tsLoadError.classList.add('hidden');
+        tsViewer.classList.remove('hidden');
+    }
+
+    function renderTestSuiteCode(rawCode) {
+        if (typeof marked !== 'undefined') {
+            tsViewer.innerHTML = marked.parse(stripCodeFences(rawCode));
+        } else {
+            tsViewer.textContent = stripCodeFences(rawCode);
+        }
+    }
+
+    // ── Test Suite: Download ────────────────────────────────────────────────
+    tsDownloadBtn.addEventListener('click', async () => {
+        const originalHtml = tsDownloadBtn.innerHTML;
+
+        let content = rawSuiteContent;
+        if (!content && rawSuitePath) {
+            tsDownloadBtn.disabled = true;
+            tsDownloadBtn.textContent = 'Fetching…';
+            const result = await fetchTestSuiteContent(rawSuitePath);
+            content = result.content;
+            tsDownloadBtn.innerHTML = originalHtml;
+            tsDownloadBtn.disabled = false;
+            if (!content) {
+                const msg = result.status === 'not-found'
+                    ? 'Server needs restart — file saved at: ' + rawSuitePath
+                    : (result.status || 'Could not retrieve content') + (rawSuitePath ? ' — ' + rawSuitePath : '');
+                tsBuildBanner.innerHTML = '&#x26A0;&#xFE0F; ' + escapeHtml(msg);
+                tsBuildBanner.classList.remove('hidden');
+                return;
+            }
+        }
+
+        if (!content) {
+            tsBuildBanner.innerHTML = '&#x26A0;&#xFE0F; No test suite content available.';
+            tsBuildBanner.classList.remove('hidden');
+            return;
+        }
+
+        tsDownloadBtn.disabled = true;
+        tsDownloadBtn.textContent = 'Saving…';
+
+        try {
+            const solutionName = solutionNameInput.value.trim();
+            const fileName = solutionName
+                ? `${solutionName}-testsuite`
+                : 'testsuite';
+
+            const response = await fetch('/api/orchestrator/save-docx', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: content, fileName })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                throw new Error(err.error || `Server error ${response.status}`);
+            }
+
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName.endsWith('.docx') ? fileName : fileName + '.docx';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            tsDownloadBtn.innerHTML = '✓ Downloaded';
+            setTimeout(() => {
+                tsDownloadBtn.innerHTML = originalHtml;
+                tsDownloadBtn.disabled = false;
+            }, 2500);
+        } catch (err) {
+            tsDownloadBtn.innerHTML = originalHtml;
+            tsDownloadBtn.disabled = false;
+            showError('Could not save test suite: ' + (err.message || 'Unknown error'));
+        }
+    });
+
+    // ── Test Suite: Copy ────────────────────────────────────────────────────
+    tsCopyBtn.addEventListener('click', async () => {
+        let content = rawSuiteContent;
+        if (!content && rawSuitePath) {
+            const result = await fetchTestSuiteContent(rawSuitePath);
+            content = result.content;
+        }
+        if (!content) return;
+        try {
+            await navigator.clipboard.writeText(content);
+            const original = tsCopyBtn.innerHTML;
+            tsCopyBtn.textContent = '\u2713 Copied';
+            setTimeout(() => { tsCopyBtn.innerHTML = original; }, 2000);
+        } catch {
+            const ta = document.createElement('textarea');
+            ta.value = content;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+    });
+
+    // ── Test Suite: Back to Spec ────────────────────────────────────────────
+    tsBackBtn.addEventListener('click', () => {
+        testsuiteSection.classList.add('hidden');
+        resultSection.classList.remove('hidden');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // ── View Test Suite (from spec panel) ───────────────────────────────────
+    viewTestSuiteBtn.addEventListener('click', () => {
+        resultSection.classList.add('hidden');
+        testsuiteSection.classList.remove('hidden');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // ── New Upload (from test suite panel) ─────────────────────────────────
+    tsNewUploadBtn.addEventListener('click', () => {
+        newUploadBtn.click();
+    });
+
     // ── New Upload ──────────────────────────────────────────────────────────
     newUploadBtn.addEventListener('click', () => {
         clearFile();
@@ -598,10 +879,14 @@
         hideError();
         resultSection.classList.add('hidden');
         testcasesSection.classList.add('hidden');
+        testsuiteSection.classList.add('hidden');
         uploadSection.classList.remove('hidden');
-        rawTestContent = '';
-        rawTestPath    = '';
+        rawTestContent  = '';
+        rawTestPath     = '';
+        rawSuiteContent = '';
+        rawSuitePath    = '';
         viewTestsBtn.classList.add('hidden');
+        viewTestSuiteBtn.classList.add('hidden');
     });
 
 })();

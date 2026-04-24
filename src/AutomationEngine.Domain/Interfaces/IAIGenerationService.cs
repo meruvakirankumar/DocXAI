@@ -7,4 +7,6 @@ public interface IAIGenerationService
         CancellationToken ct = default);
 
     Task<string> GeneratePlaywrightTestsAsync(string functionalSpecContent, CancellationToken ct = default);
+
+    Task<string> GenerateTestSuiteAsync(string functionalSpecContent, CancellationToken ct = default);
 }

@@ -48,6 +48,12 @@ public sealed class GcpVertexAIService : IAIGenerationService
         return await GenerateAsync(BuildPlaywrightTestsPrompt(functionalSpecContent), ct);
     }
 
+    public async Task<string> GenerateTestSuiteAsync(string functionalSpecContent, CancellationToken ct = default)
+    {
+        _logger.LogInformation("Generating human-readable Test Suite via Vertex AI model {Model}", ModelName);
+        return await GenerateAsync(BuildTestSuitePrompt(functionalSpecContent), ct);
+    }
+
     private async Task<string> GenerateAsync(string prompt, CancellationToken ct)
     {
         var request = new GenerateContentRequest
@@ -132,5 +138,25 @@ public sealed class GcpVertexAIService : IAIGenerationService
 
         Output ONLY the TypeScript code ï¿½ a single .spec.ts file executable via `npx playwright test`.
         No explanatory prose; pure code only.
+        """;
+        
+    private static string BuildTestSuitePrompt(string functionalSpecContent) => $"""
+        You are a senior QA analyst.
+        Given the Functional Specification below, generate a complete human-readable Test Suite.
+
+        Requirements:
+        1. Produce the test cases in a clear Markdown table format.
+        2. The table should have the following columns: 
+           | Test Case ID | Scenario | Pre-conditions | Test Steps | Expected Result | Status |
+        3. Cover ALL functional requirements with individual test cases.
+        4. Include positive (happy path) and negative (error-path) scenarios.
+        5. The output should be formatted nicely so it can be easily copied into a Word or Excel document.
+
+        Functional Specification:
+        ---
+        {functionalSpecContent}
+        ---
+
+        Output ONLY the Markdown table(s) and any necessary headings. Do not include introductory or concluding prose.
         """;
 }
